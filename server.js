@@ -6,8 +6,8 @@ const admin = require('firebase-admin');
 
 dotenv.config({ path: './.env' });
 
-// Initialize Firebase Admin SDK
-const serviceAccount = require('./firebase-service-account.json');
+// Initialize Firebase Admin SDK using environment variable
+const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -18,7 +18,7 @@ app.use(cors());
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://ueacc.com',    
+  'https://ueacc.com',
 ];
 
 const corsOptions = {
@@ -27,7 +27,7 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.warn('❌ CORS blocked origin:', origin);
-      callback(null, false); // Don't throw!
+      callback(null, false);
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -55,7 +55,7 @@ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 // Seed admin user in Firebase and MongoDB on first run
 const User = require('./models/User');
 (async () => {
-  const adminEmail = 'admin@school.com';
+  const adminEmail = 'uelms2025@gmail.com';
   const adminExists = await User.findOne({ email: adminEmail });
   if (!adminExists) {
     try {
