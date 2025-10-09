@@ -252,6 +252,7 @@ exports.generateUserExpensesPDF = async (req, res) => {
   try {
     // Set CORS headers (if not handled globally)
     res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
+    res.setHeader('Access-Control-Allow-Origin', 'https://ueacc.com');
     res.setHeader('Access-Control-Allow-Methods', 'GET');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Accept');
 
