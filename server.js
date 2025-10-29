@@ -3,16 +3,6 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const admin = require('firebase-admin');
-const multer = require('multer');
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
-});
-const upload = multer({ storage });
-
-app.use('/uploads', express.static('uploads'));
-app.use('/api/users', require('./routes/userRoutes'));
-app.use('/api/expenses', require('./routes/expenseRoutes'));
 
 dotenv.config({ path: './.env' });
 
@@ -28,7 +18,7 @@ app.use(cors());
 
 const allowedOrigins = [
   'http://localhost:3000',
-  // 'https://ueacc.com',
+  'https://ueacc.com',
 ];
 
 const corsOptions = {

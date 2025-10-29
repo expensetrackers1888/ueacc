@@ -1,23 +1,20 @@
 const express = require('express');
-const router = express.Router();
 const expenseController = require('../controllers/expenseController');
 const authMiddleware = require('../middleware/authMiddleware');
-const multer = require('multer');
 
-const upload = multer({ dest: 'uploads/' });
+const router = express.Router();
 
-// User routes
 router.use(authMiddleware.protect);
-router.get('/my-expenses', expenseController.getUserExpenses);
-router.get('/my-approved', expenseController.getMyApprovedExpenses);
-router.post('/', upload.single('file'), expenseController.addExpense);
-router.put('/approved/:id', upload.single('file'), expenseController.updateApprovedExpense);
 
-// Admin routes
-router.use(authMiddleware.restrictTo('admin'));
-router.get('/admin/users', expenseController.getAdminUsers);
-router.get('/admin/user/:userId', expenseController.getUserExpensesAdmin);
-router.put('/admin/:id/status', expenseController.updateExpenseStatus);
-router.get('/admin/user/:userId/pdf', expenseController.generateUserPDF);
+router.get('/', authMiddleware.restrictTo('admin'), expenseController.getAllExpenses);
+router.get('/stats', authMiddleware.restrictTo('admin'), expenseController.getAdminStats);
+router.patch('/:id', authMiddleware.restrictTo('admin'), expenseController.updateExpense);
+router.get('/user/:userId', authMiddleware.restrictTo('admin'), expenseController.getUserExpensesAdmin);
+router.get('/user/:userId/pdf', authMiddleware.restrictTo('admin'), expenseController.generateUserExpensesPDF);
+
+router.post('/', expenseController.addExpense);
+router.put('/:id', expenseController.editExpense);
+router.get('/my-expenses', expenseController.getUserExpenses);
+router.delete('/:id', expenseController.deleteExpense);
 
 module.exports = router;
