@@ -12,6 +12,9 @@ const convertCurrency = (amount, currency) => {
   return (amount * rates[currency]).toFixed(2);
 };
 
+// ====================
+// 1. GET ALL EXPENSES (ADMIN)
+// ====================
 exports.getAllExpenses = async (req, res) => {
   try {
     const expenses = await Expense.find().populate('user', 'email').lean();
@@ -21,10 +24,14 @@ exports.getAllExpenses = async (req, res) => {
       data: { expenses },
     });
   } catch (error) {
+    console.error('getAllExpenses error:', error);
     res.status(500).json({ status: 'error', message: 'Server error' });
   }
 };
 
+// ====================
+// 2. GET USER'S OWN EXPENSES
+// ====================
 exports.getUserExpenses = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -35,10 +42,14 @@ exports.getUserExpenses = async (req, res) => {
       data: { expenses },
     });
   } catch (error) {
+    console.error('getUserExpenses error:', error);
     res.status(500).json({ status: 'error', message: 'Server error' });
   }
 };
 
+// ====================
+// 3. GET ANY USER'S EXPENSES (ADMIN)
+// ====================
 exports.getUserExpensesAdmin = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -53,13 +64,18 @@ exports.getUserExpensesAdmin = async (req, res) => {
       data: { expenses },
     });
   } catch (error) {
+    console.error('getUserExpensesAdmin error:', error);
     res.status(500).json({ status: 'error', message: 'Server error' });
   }
 };
 
+// ====================
+// 4. ADD NEW EXPENSE
+// ====================
 exports.addExpense = async (req, res) => {
   try {
     const { description, amount, date, category, otherType, currency, notes } = req.body;
+
     if (!description || !amount || !date || !category) {
       return res.status(400).json({ message: 'Please provide description, amount, date, and category' });
     }
@@ -83,10 +99,14 @@ exports.addExpense = async (req, res) => {
       data: { expense: populatedExpense },
     });
   } catch (error) {
+    console.error('addExpense error:', error);
     res.status(400).json({ status: 'error', message: error.message });
   }
 };
 
+// ====================
+// 5. EDIT PENDING EXPENSE (USER)
+// ====================
 exports.editExpense = async (req, res) => {
   try {
     const { id } = req.params;
@@ -128,14 +148,93 @@ exports.editExpense = async (req, res) => {
       data: { expense: updatedExpense },
     });
   } catch (error) {
+    console.error('editExpense error:', error);
     res.status(400).json({ status: 'error', message: error.message });
   }
 };
 
+// ====================
+// 6. GET USER'S APPROVED EXPENSES ONLY
+// ====================
+exports.getMyApprovedExpenses = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const expenses = await Expense.find({ user: userId, status: 'Approved' })
+      .populate('user', 'email')
+      .lean();
+
+    res.status(200).json({
+      status: 'success',
+      data: { expenses },
+    });
+  } catch (error) {
+    console.error('getMyApprovedExpenses error:', error);
+    res.status(500).json({ status: 'error', message: 'Server error' });
+  }
+};
+
+// ====================
+// 7. SUBMIT UPDATED APPROVED EXPENSES (BULK UPSERT)
+// ====================
+exports.submitApprovedUpdates = async (req, res) => {
+  try {
+    const { updates } = req.body;
+
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return res.status(400).json({ message: 'No updates provided' });
+    }
+
+    const userId = req.user.id;
+
+    // Validate each update
+    for (const update of updates) {
+      if (!update.category || isNaN(update.amount) || update.amount < 0) {
+        return res.status(400).json({ message: 'Invalid update data: category and valid amount required' });
+      }
+    }
+
+    // Build bulk operations: upsert one expense per category
+    const operations = updates.map(update => ({
+      updateOne: {
+        filter: { user: userId, category: update.category, status: 'Approved' },
+        update: {
+          $set: {
+            amount: parseFloat(update.amount),
+            description: `Updated approved expense for ${update.category}`,
+            date: new Date(),
+            currency: 'INR',
+            notes: 'Updated via approved expenses table',
+          },
+        },
+        upsert: true,
+        setDefaultsOnInsert: true,
+      },
+    }));
+
+    const result = await Expense.bulkWrite(operations);
+
+    res.status(200).json({
+      status: 'success',
+      message: `${result.upsertedCount} created, ${result.modifiedCount} updated. Submitted for admin review.`,
+      data: { result },
+    });
+  } catch (error) {
+    console.error('submitApprovedUpdates error:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to submit updates: ' + error.message });
+  }
+};
+
+// ====================
+// 8. APPROVE / REJECT EXPENSE (ADMIN)
+// ====================
 exports.updateExpense = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, rejectReason } = req.body;
+
+    if (!['Approved', 'Rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Status must be Approved or Rejected' });
+    }
 
     if (status === 'Rejected' && !rejectReason) {
       return res.status(400).json({ message: 'Reject reason is required for rejected status' });
@@ -156,10 +255,14 @@ exports.updateExpense = async (req, res) => {
       data: { expense: updatedExpense },
     });
   } catch (error) {
+    console.error('updateExpense error:', error);
     res.status(400).json({ status: 'error', message: error.message });
   }
 };
 
+// ====================
+// 9. DELETE PENDING EXPENSE
+// ====================
 exports.deleteExpense = async (req, res) => {
   try {
     const { id } = req.params;
@@ -184,10 +287,14 @@ exports.deleteExpense = async (req, res) => {
       data: null,
     });
   } catch (error) {
+    console.error('deleteExpense error:', error);
     res.status(500).json({ status: 'error', message: 'Server error' });
   }
 };
 
+// ====================
+// 10. ADMIN STATS
+// ====================
 exports.getAdminStats = async (req, res) => {
   try {
     const totalUsers = await User.countDocuments({ role: 'user' });
@@ -195,6 +302,7 @@ exports.getAdminStats = async (req, res) => {
       { $group: { _id: null, total: { $sum: '$amount' } } }
     ]);
     const pendingExpenses = await Expense.countDocuments({ status: 'Pending' });
+
     const today = new Date();
     const startOfDay = new Date(today.setHours(0, 0, 0, 0));
     const startOfWeek = new Date(today.setDate(today.getDate() - today.getDay()));
@@ -214,6 +322,7 @@ exports.getAdminStats = async (req, res) => {
     ]);
 
     const totalExpenseAmount = totalExpenses[0]?.total || 0;
+
     const stats = {
       totalUsers,
       totalExpenses: {
@@ -244,90 +353,59 @@ exports.getAdminStats = async (req, res) => {
       data: { stats },
     });
   } catch (error) {
+    console.error('getAdminStats error:', error);
     res.status(500).json({ status: 'error', message: 'Server error' });
   }
 };
 
+// ====================
+// 11. GENERATE USER EXPENSES PDF (ADMIN)
+// ====================
 exports.generateUserExpensesPDF = async (req, res) => {
   try {
-    // Set CORS headers (if not handled globally)
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000');
-    res.setHeader('Access-Control-Allow-Origin', 'https://ueacc.com');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Accept');
 
     const { userId } = req.params;
     const user = await User.findById(userId).lean();
     if (!user) {
-      console.error(`User not found for ID: ${userId}`);
       return res.status(404).json({ status: 'error', message: 'User not found' });
     }
+
     const expenses = await Expense.find({ user: userId }).lean();
+    const doc = new PDFDocument({ size: 'A4', margins: { top: 50, bottom: 50, left: 50, right: 50 } });
 
-    const doc = new PDFDocument({
-      size: 'A4',
-      margins: { top: 50, bottom: 50, left: 50, right: 50 },
-    });
-
-    // Sanitize email for filename to avoid invalid characters
     const sanitizedEmail = user.email.replace(/[^a-zA-Z0-9._-]/g, '_');
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=${sanitizedEmail}_expenses_report.pdf`);
-
-    // Pipe PDF to response
     doc.pipe(res);
 
-    // Header Section
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(20)
-      .fillColor('#1f2937')
-      .text('Expense Report', { align: 'center' });
-    doc
-      .fontSize(14)
-      .fillColor('#4b5563')
-      .text(`Generated for: ${user.email}`, { align: 'center' });
-    doc
-      .fontSize(12)
-      .text(`Date: ${new Date().toLocaleDateString()}`, { align: 'center' });
+    // Header
+    doc.font('Helvetica-Bold').fontSize(20).fillColor('#1f2937').text('Expense Report', { align: 'center' });
+    doc.fontSize(14).fillColor('#4b5563').text(`Generated for: ${user.email}`, { align: 'center' });
+    doc.fontSize(12).text(`Date: ${new Date().toLocaleDateString()}`, { align: 'center' });
     doc.moveDown(2);
 
-    // Table Styling Configuration
     const table = {
       x: 50,
-      width: 495, 
-      columnWidths: {
-        description: 200,
-        amount: 70,
-        currency: 50,
-        date: 75,
-        category: 50,
-        status: 50,
-      },
+      width: 495,
+      columnWidths: { description: 200, amount: 70, currency: 50, date: 75, category: 50, status: 50 },
       rowHeight: 30,
-      rowSpacing: 10, 
+      rowSpacing: 10,
       headerHeight: 30,
-      totalRowHeight: 40, 
+      totalRowHeight: 40,
     };
 
     if (expenses.length === 0) {
-      doc
-        .font('Helvetica')
-        .fontSize(14)
-        .fillColor('#4b5563')
-        .text('No expenses found.', { align: 'center' });
+      doc.font('Helvetica').fontSize(14).fillColor('#4b5563').text('No expenses found.', { align: 'center' });
     } else {
-      // Table Header
       const tableTop = doc.y;
-      doc
-        .rect(table.x, tableTop, table.width, table.headerHeight)
-        .fill('#e5e7eb')
-        .stroke('#d1d5db');
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(10)
-        .fillColor('#1f2937');
-      
+
+      // Header
+      doc.rect(table.x, tableTop, table.width, table.headerHeight).fill('#e5e7eb').stroke('#d1d5db');
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#1f2937');
+
       let x = table.x + 5;
       const headerY = tableTop + (table.headerHeight - 10) / 2;
       doc.text('Description', x, headerY, { width: table.columnWidths.description });
@@ -342,23 +420,17 @@ exports.generateUserExpensesPDF = async (req, res) => {
       x += table.columnWidths.category;
       doc.text('Status', x, headerY, { width: table.columnWidths.status, align: 'center' });
 
-      // Table Rows
+      // Rows
       expenses.forEach((exp, index) => {
-        // Add rowSpacing between rows
         const y = tableTop + table.headerHeight + index * (table.rowHeight + table.rowSpacing);
-        const background = index % 2 === 0 ? '#ffffff' : '#f9fafb';
-        doc
-          .rect(table.x, y, table.width, table.rowHeight)
-          .fill(background)
-          .stroke('#d1d5db');
-        doc
-          .font('Helvetica')
-          .fontSize(10)
-          .fillColor('#374151');
-        
+        const bg = index % 2 === 0 ? '#ffffff' : '#f9fafb';
+        doc.rect(table.x, y, table.width, table.rowHeight).fill(bg).stroke('#d1d5db');
+        doc.font('Helvetica').fontSize(10).fillColor('#374151');
+
         x = table.x + 5;
         const textY = y + (table.rowHeight - 10) / 2;
         const desc = exp.description.length > 50 ? exp.description.substring(0, 47) + '...' : exp.description;
+
         doc.text(desc, x, textY, { width: table.columnWidths.description - 5 });
         x += table.columnWidths.description;
         doc.text(exp.amount.toFixed(2), x, textY, { width: table.columnWidths.amount - 5, align: 'right' });
@@ -372,31 +444,24 @@ exports.generateUserExpensesPDF = async (req, res) => {
         doc.text(exp.status, x, textY, { width: table.columnWidths.status - 5, align: 'center' });
       });
 
-      // Add spacing before the total row
-      const totalY = tableTop + table.headerHeight + expenses.length * (table.rowHeight + table.rowSpacing) + 10; // 10-unit gap before total
+      // Total Row
+      const totalY = tableTop + table.headerHeight + expenses.length * (table.rowHeight + table.rowSpacing) + 10;
       const totalAmount = expenses.reduce((sum, exp) => sum + exp.amount, 0).toFixed(2);
-      const currency = expenses.length > 0 ? expenses[0].currency || 'INR' : 'INR';
-      doc
-        .rect(table.x, totalY, table.width, table.totalRowHeight)
-        .fill('#e5e7eb')
-        .stroke('#d1d5db');
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(10)
-        .fillColor('#1f2937');
+      const currency = expenses[0]?.currency || 'INR';
+
+      doc.rect(table.x, totalY, table.width, table.totalRowHeight).fill('#e5e7eb').stroke('#d1d5db');
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#1f2937');
       x = table.x + 5;
       doc.text('Total', x, totalY + (table.totalRowHeight - 10) / 2, { width: table.columnWidths.description });
       x += table.columnWidths.description;
       doc.text(`${totalAmount} (${currency})`, x, totalY + (table.totalRowHeight - 10) / 2, { width: table.columnWidths.amount - 5, align: 'right' });
-      
-      // Add spacing after the total row
-      doc.moveDown(1); // Adds a 10-unit gap
+
+      doc.moveDown(1);
     }
 
-    // Finalize the PDF stream
     doc.end();
   } catch (error) {
-    console.error('Error generating PDF:', error);
+    console.error('generateUserExpensesPDF error:', error);
     res.status(500).json({ status: 'error', message: 'Failed to generate PDF: ' + error.message });
   }
 };
