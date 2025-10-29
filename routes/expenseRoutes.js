@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.use(authMiddleware.protect);
 
+// Existing
 router.get('/', authMiddleware.restrictTo('admin'), expenseController.getAllExpenses);
 router.get('/stats', authMiddleware.restrictTo('admin'), expenseController.getAdminStats);
 router.patch('/:id', authMiddleware.restrictTo('admin'), expenseController.updateExpense);
@@ -16,5 +17,9 @@ router.post('/', expenseController.addExpense);
 router.put('/:id', expenseController.editExpense);
 router.get('/my-expenses', expenseController.getUserExpenses);
 router.delete('/:id', expenseController.deleteExpense);
+
+// NEW ROUTES
+router.get('/my-approved', expenseController.getMyApprovedExpenses);
+router.post('/submit-approved-updates', expenseController.submitApprovedUpdates);
 
 module.exports = router;
