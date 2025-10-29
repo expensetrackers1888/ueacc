@@ -1,25 +1,28 @@
 const express = require('express');
-const expenseController = require('../controllers/expenseController');
-const authMiddleware = require('../middleware/authMiddleware');
-
 const router = express.Router();
+const multer = require('multer');
+const {
+  getUserExpenses, addExpense, editExpense, deleteExpense,
+  getAllUsersWithStats, getUserExpensesAdmin, updateExpenseStatus,
+  generateUserPDF
+} = require('../controllers/expenseController');
+const { protect, restrictTo } = require('../middleware/authMiddleware');
 
-router.use(authMiddleware.protect);
+const upload = multer({ dest: 'uploads/' });
 
-// Existing
-router.get('/', authMiddleware.restrictTo('admin'), expenseController.getAllExpenses);
-router.get('/stats', authMiddleware.restrictTo('admin'), expenseController.getAdminStats);
-router.patch('/:id', authMiddleware.restrictTo('admin'), expenseController.updateExpense);
-router.get('/user/:userId', authMiddleware.restrictTo('admin'), expenseController.getUserExpensesAdmin);
-router.get('/user/:userId/pdf', authMiddleware.restrictTo('admin'), expenseController.generateUserExpensesPDF);
+router.use(protect);
 
-router.post('/', expenseController.addExpense);
-router.put('/:id', expenseController.editExpense);
-router.get('/my-expenses', expenseController.getUserExpenses);
-router.delete('/:id', expenseController.deleteExpense);
+router.get('/my-expenses', getUserExpenses);
+router.post('/', upload.single('file'), addExpense);
+router.put('/:id', upload.single('file'), editExpense);
+router.delete('/:id', deleteExpense);
+router.get('/pdf', generateUserPDF);
 
-// NEW ROUTES
-router.get('/my-approved', expenseController.getMyApprovedExpenses);
-router.post('/submit-approved-updates', expenseController.submitApprovedUpdates);
+router.use(restrictTo('admin'));
+router.get('/admin/users', getAllUsersWithStats);
+router.get('/admin/user/:userId', getUserExpensesAdmin);
+router.put('/admin/:id/status', updateExpenseStatus);
+// Add this route
+router.get('/admin/pdf', protect, restrictTo('admin'), expenseController.generateAdminPDF);
 
 module.exports = router;

@@ -1,14 +1,13 @@
+// server/routes/userRoutes.js
 const express = require('express');
-const userController = require('../controllers/userController');
-const authMiddleware = require('../middleware/authMiddleware');
-
 const router = express.Router();
+const { getAllUsers, addUser, deleteUser } = require('../controllers/userController');
+const { protect, restrictTo } = require('../middleware/authMiddleware');
 
-// Protect all routes and restrict to admin
-router.use(authMiddleware.protect, authMiddleware.restrictTo('admin'));
+router.use(protect, restrictTo('admin'));
 
-router.get('/', userController.getAllUsers);
-router.post('/', userController.addUser);
-router.delete('/:id', userController.deleteUser);
+router.get('/', getAllUsers);
+router.post('/', addUser);
+router.delete('/:id', deleteUser);
 
-module.exports = router; 
+module.exports = router;
