@@ -1,20 +1,33 @@
 const express = require('express');
-const expenseController = require('../controllers/expenseController');
-const authMiddleware = require('../middleware/authMiddleware');
-
 const router = express.Router();
+const {
+  getAllExpenses,
+  addExpense,
+  editExpense,
+  getUserExpenses,
+  getUserExpensesAdmin,
+  updateExpenseStatus,
+  deleteExpense,
+  getAdminStats,
+  generateUserExpensesPDF,
+  upload,
+} = require('../controllers/expenseController');
+const { protect, authorize } = require('../middleware/auth');
 
-router.use(authMiddleware.protect);
+router.use(protect);
 
-router.get('/', authMiddleware.restrictTo('admin'), expenseController.getAllExpenses);
-router.get('/stats', authMiddleware.restrictTo('admin'), expenseController.getAdminStats);
-router.patch('/:id', authMiddleware.restrictTo('admin'), expenseController.updateExpense);
-router.get('/user/:userId', authMiddleware.restrictTo('admin'), expenseController.getUserExpensesAdmin);
-router.get('/user/:userId/pdf', authMiddleware.restrictTo('admin'), expenseController.generateUserExpensesPDF);
+router.get('/me', getUserExpenses);
+router.post('/', upload, addExpense);
+router.put('/:id', upload, editExpense);
+router.delete('/:id', deleteExpense);
 
-router.post('/', expenseController.addExpense);
-router.put('/:id', expenseController.editExpense);
-router.get('/my-expenses', expenseController.getUserExpenses);
-router.delete('/:id', expenseController.deleteExpense);
+router.get('/admin/stats', authorize('admin'), getAdminStats);
+router.get('/admin/all', authorize('admin'), getAllExpenses);
+router.get('/admin/user/:userId', authorize('admin'), getUserExpensesAdmin);
+router.patch('/admin/:id', authorize('admin'), updateExpenseStatus);
+router.get('/admin/pdf/:userId', authorize('admin'), generateUserExpensesPDF);
+
+router.post('/', authMiddleware.protect, expenseController.upload, expenseController.addExpense);
+router.put('/:id', authMiddleware.protect, expenseController.upload, expenseController.editExpense);
 
 module.exports = router;

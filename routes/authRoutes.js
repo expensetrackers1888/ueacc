@@ -1,8 +1,19 @@
 const express = require('express');
-const authController = require('../controllers/authController');
-
 const router = express.Router();
+const { body } = require('express-validator');
+const { login } = require('../controllers/authController');
 
-router.post('/login', authController.login);
+// POST /api/auth/login
+router.post(
+  '/login',
+  [
+    body('idToken')
+      .isString()
+      .withMessage('ID token must be a string')
+      .notEmpty()
+      .withMessage('ID token is required'),
+  ],
+  login
+);
 
-module.exports = router; 
+module.exports = router;

@@ -1,26 +1,32 @@
 const mongoose = require('mongoose');
 
-const userSchema = new mongoose.Schema({
-  firebaseUid: {
-    type: String,
-    required: true,
-    unique: true,
+const userSchema = new mongoose.Schema(
+  {
+    firebaseUid: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
+    },
   },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    lowercase: true,
-  },
-  role: {
-    type: String,
-    enum: ['admin', 'user'],
-    default: 'user',
-  },
-}, {
-  timestamps: true,
-});
+  {
+    timestamps: true,
+  }
+);
 
-const User = mongoose.model('User', userSchema);
+// Index for faster lookups
+userSchema.index({ email: 1 });
+userSchema.index({ firebaseUid: 1 });
 
-module.exports = User; 
+module.exports = mongoose.model('User', userSchema);
