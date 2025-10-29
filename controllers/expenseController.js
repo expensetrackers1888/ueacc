@@ -4,136 +4,170 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 
+// Helper: Convert currency
+const convertCurrency = (amount, currency) => {
+  const rates = { INR: 1, USD: 0.012, ZMW: 0.31 };
+  return (amount * rates[currency]).toFixed(2);
+};
+
+// Get user's own expenses (pending + approved)
 exports.getUserExpenses = async (req, res) => {
   try {
     const expenses = await Expense.find({ user: req.user.id }).sort({ date: -1 });
     res.json({ status: 'success', data: { expenses } });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Server error' });
   }
 };
 
+// Get approved expenses only
+exports.getMyApprovedExpenses = async (req, res) => {
+  try {
+    const expenses = await Expense.find({ user: req.user.id, status: 'Approved' }).sort({ date: -1 });
+    res.json({ status: 'success', data: { expenses } });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Server error' });
+  }
+};
+
+// Add expense (user)
 exports.addExpense = async (req, res) => {
   try {
-    const { description, amount, date, category, otherType } = req.body;
+    const { description, amount, date, category, otherType, notes } = req.body;
     const file = req.file;
 
     const expense = await Expense.create({
       description,
       amount: parseFloat(amount),
-      date,
+      date: new Date(date),
       category,
       otherType: otherType || '',
-      file: file ? `/uploads/${file.filename}` : null,
-      user: req.user.id
+      notes: notes || '',
+      user: req.user.id,
+      status: 'Pending',
+      file: file ? {
+        url: `/uploads/${file.filename}`,
+        filename: file.originalname,
+        mimetype: file.mimetype,
+      } : null,
     });
 
-    const populated = await Expense.findById(expense._id).populate('user', 'email');
-    res.status(201).json({ status: 'success', data: { expense: populated } });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(201).json({ status: 'success', data: { expense } });
+  } catch (error) {
+    res.status(400).json({ status: 'error', message: error.message });
   }
 };
 
-exports.editExpense = async (req, res) => {
+// Edit approved expense + file
+exports.updateApprovedExpense = async (req, res) => {
   try {
-    const expense = await Expense.findById(req.params.id);
-    if (expense.user.toString() !== req.user.id || expense.status !== 'Pending') {
-      return res.status(403).json({ message: 'Not allowed' });
+    const { id } = req.params;
+    const { amount, notes } = req.body;
+    const file = req.file;
+
+    const expense = await Expense.findOne({ _id: id, user: req.user.id, status: 'Approved' });
+    if (!expense) return res.status(404).json({ message: 'Expense not found or not approved' });
+
+    expense.amount = parseFloat(amount);
+    expense.notes = notes || expense.notes;
+    if (file) {
+      expense.file = {
+        url: `/uploads/${file.filename}`,
+        filename: file.originalname,
+        mimetype: file.mimetype,
+      };
     }
+    expense.status = 'Pending'; // Re-review
+    await expense.save();
 
-    const updates = req.body;
-    if (req.file) updates.file = `/uploads/${req.file.filename}`;
-
-    const updated = await Expense.findByIdAndUpdate(req.params.id, updates, { new: true });
-    res.json({ status: 'success', data: { expense: updated } });
-  } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.json({ status: 'success', data: { expense } });
+  } catch (error) {
+    res.status(400).json({ status: 'error', message: error.message });
   }
 };
 
-exports.deleteExpense = async (req, res) => {
+// Admin: Get all users with total approved
+exports.getAdminUsers = async (req, res) => {
   try {
-    const expense = await Expense.findById(req.params.id);
-    if (expense.user.toString() !== req.user.id || expense.status !== 'Pending') {
-      return res.status(403).json({ message: 'Not allowed' });
-    }
-    await Expense.findByIdAndDelete(req.params.id);
-    res.status(204).json({});
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    const users = await User.find({ role: 'user' });
+    const usersWithTotal = await Promise.all(users.map(async (user) => {
+      const total = await Expense.aggregate([
+        { $match: { user: user._id, status: 'Approved' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ]);
+      return {
+        ...user.toObject(),
+        totalApproved: total[0]?.total || 0,
+      };
+    }));
+    res.json({ status: 'success', data: { users: usersWithTotal } });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Server error' });
   }
 };
 
-exports.getAllUsersWithStats = async (req, res) => {
-  const users = await User.find({ role: 'user' });
-  const stats = await Promise.all(users.map(async (user) => {
-    const exps = await Expense.find({ user: user._id });
-    return {
-      ...user.toObject(),
-      stats: {
-        pending: exps.filter(e => e.status === 'Pending').length,
-        approved: exps.filter(e => e.status === 'Approved').length,
-        total: exps.reduce((s, e) => s + e.amount, 0).toFixed(2)
-      }
-    };
-  }));
-  res.json({ status: 'success', data: { users: stats } });
-};
-
+// Admin: Get user's expenses
 exports.getUserExpensesAdmin = async (req, res) => {
-  const expenses = await Expense.find({ user: req.params.userId }).sort({ date: -1 });
-  res.json({ status: 'success', data: { expenses } });
+  try {
+    const { userId } = req.params;
+    const expenses = await Expense.find({ user: userId }).populate('user', 'email').sort({ date: -1 });
+    res.json({ status: 'success', data: { expenses } });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Server error' });
+  }
 };
 
+// Admin: Update status
 exports.updateExpenseStatus = async (req, res) => {
-  const { status, rejectReason } = req.body;
-  if (!['Approved', 'Rejected'].includes(status)) {
-    return res.status(400).json({ message: 'Invalid status' });
+  try {
+    const { id } = req.params;
+    const { status, rejectReason } = req.body;
+    if (status === 'Rejected' && !rejectReason) {
+      return res.status(400).json({ message: 'Reject reason required' });
+    }
+    const expense = await Expense.findByIdAndUpdate(id, { status, rejectReason: rejectReason || '' }, { new: true });
+    if (!expense) return res.status(404).json({ message: 'Expense not found' });
+    res.json({ status: 'success', data: { expense } });
+  } catch (error) {
+    res.status(400).json({ status: 'error', message: error.message });
   }
-  const expense = await Expense.findByIdAndUpdate(
-    req.params.id,
-    { status, rejectReason: rejectReason || '' },
-    { new: true }
-  );
-  res.json({ status: 'success', data: { expense } });
 };
 
+// Generate PDF with images
 exports.generateUserPDF = async (req, res) => {
-  const expenses = await Expense.find({ user: req.user.id, status: 'Approved' }).sort({ date: -1 });
-  const user = await User.findById(req.user.id);
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-  const doc = new PDFDocument({ margin: 50 });
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename=${user.email}_expenses.pdf`);
-  doc.pipe(res);
+    const expenses = await Expense.find({ user: userId, status: 'Approved' });
 
-  doc.fontSize(20).text('Approved Expenses Report', { align: 'center' });
-  doc.fontSize(12).text(`User: ${user.email}`, { align: 'center' });
-  doc.moveDown();
+    const doc = new PDFDocument({ margin: 50 });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=${user.email}_report.pdf`);
+    doc.pipe(res);
 
-  if (expenses.length === 0) {
-    doc.text('No approved expenses.');
-  } else {
-    let y = doc.y;
-    const rowHeight = 25;
-    doc.fontSize(10);
+    doc.fontSize(20).text('Expense Report', { align: 'center' });
+    doc.fontSize(12).text(`User: ${user.email}`, { align: 'center' });
+    doc.moveDown();
 
-    // Header
-    ['S.No', 'Date', 'Category', 'Amount', 'File'].forEach((h, i) => {
-      doc.text(h, 50 + i * 100, y);
-    });
-    y += rowHeight;
-
+    let total = 0;
     expenses.forEach((exp, i) => {
-      doc.text((i + 1).toString(), 50, y);
-      doc.text(new Date(exp.date).toLocaleDateString(), 150, y);
-      doc.text(exp.category + (exp.otherType ? ` (${exp.otherType})` : ''), 250, y);
-      doc.text(`₹${exp.amount}`, 350, y);
-      doc.text(exp.file ? 'Yes' : '—', 450, y);
-      y += rowHeight;
+      total += exp.amount;
+      doc.fontSize(10).text(`${i + 1}. ${exp.description} - ${exp.amount.toFixed(2)} INR`);
+      doc.text(`   Date: ${new Date(exp.date).toLocaleDateString()} | Category: ${exp.category}`);
+      if (exp.file && ['image/jpeg', 'image/png'].includes(exp.file.mimetype)) {
+        const filePath = path.join(__dirname, '..', 'uploads', exp.file.filename);
+        if (fs.existsSync(filePath)) {
+          doc.image(filePath, { width: 200, align: 'center' });
+        }
+      }
+      doc.moveDown();
     });
-  }
 
-  doc.end();
+    doc.fontSize(14).text(`Total: ${total.toFixed(2)} INR`, { align: 'right' });
+    doc.end();
+  } catch (error) {
+    res.status(500).json({ message: 'PDF generation failed' });
+  }
 };

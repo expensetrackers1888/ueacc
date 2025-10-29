@@ -7,10 +7,16 @@ const expenseSchema = new mongoose.Schema({
   category: { type: String, required: true },
   otherType: { type: String },
   currency: { type: String, default: 'INR' },
-  file: { type: String }, // path to uploaded file
+  notes: { type: String },
+  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
   rejectReason: { type: String },
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+  // File attachment
+  file: {
+    url: { type: String },
+    filename: { type: String },
+    mimetype: { type: String },
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Expense', expenseSchema);
