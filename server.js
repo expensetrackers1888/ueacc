@@ -4,36 +4,48 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const admin = require('firebase-admin');
 
+// Load env
 dotenv.config({ path: './.env' });
 
-// Initialize Firebase Admin SDK using environment variable
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+// Firebase Admin
+let serviceAccount;
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+} catch (err) {
+  console.error('Invalid FIREBASE_KEY in .env');
+  process.exit(1);
+}
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
+// Middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// CORS
 const allowedOrigins = [
   'http://localhost:3000',
   'https://ueacc.com',
+  'https://ueacc.onrender.com',
 ];
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn('❌ CORS blocked origin:', origin);
-      callback(null, false);
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-};
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+  })
+);
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
@@ -44,47 +56,67 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/expenses', expenseRoutes);
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
+// Health
+app.get('/health', (req, res) => res.json({ status: 'OK' }));
+
+// 404 (MUST be after all routes)
+app.use((req, res) => {
+  res.status(404).json({ status: 'error', message: 'Route not found' });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({ status: 'error', message: err.message || 'Server error' });
+});
+
+// MongoDB
+mongoose
+  .connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log(err));
+  .catch((err) => {
+    console.error('MongoDB error:', err);
+    process.exit(1);
+  });
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-// Seed admin user in Firebase and MongoDB on first run
+// Seed admin
 const User = require('./models/User');
 (async () => {
   const adminEmail = 'uelms2025@gmail.com';
-  const adminExists = await User.findOne({ email: adminEmail });
-  if (!adminExists) {
-    try {
-      let firebaseUser;
-      try {
-        firebaseUser = await admin.auth().getUserByEmail(adminEmail);
-        console.log('Admin user already exists in Firebase');
-      } catch (error) {
-        if (error.code === 'auth/user-not-found') {
-          firebaseUser = await admin.auth().createUser({
-            email: adminEmail,
-            password: 'admin123',
-          });
-          console.log('Default admin created in Firebase');
-        } else {
-          throw error;
-        }
-      }
+  const adminPassword = 'admin123';
 
-      await User.create({
-        firebaseUid: firebaseUser.uid,
-        email: adminEmail,
-        role: 'admin',
-      });
-      console.log('Default admin created in MongoDB');
-    } catch (err) {
-      console.error('Error creating admin:', err);
+  try {
+    const exists = await User.findOne({ email: adminEmail });
+    if (exists) {
+      console.log('Admin already exists');
+      return;
     }
-  } else {
-    console.log('Admin user already exists in MongoDB');
+
+    let firebaseUser;
+    try {
+      firebaseUser = await admin.auth().getUserByEmail(adminEmail);
+    } catch (e) {
+      if (e.code === 'auth/user-not-found') {
+        firebaseUser = await admin.auth().createUser({
+          email: adminEmail,
+          password: adminPassword,
+        });
+        console.log('Admin created in Firebase');
+      } else {
+        throw e;
+      }
+    }
+
+    await User.create({
+      firebaseUid: firebaseUser.uid,
+      email: adminEmail,
+      role: 'admin',
+    });
+    console.log('Admin created in MongoDB');
+  } catch (err) {
+    console.error('Admin seed error:', err.message);
   }
 })();
