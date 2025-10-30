@@ -1,33 +1,14 @@
 const express = require('express');
+const userController = require('../controllers/userController');
+const authMiddleware = require('../middleware/authMiddleware');
+
 const router = express.Router();
-const { body } = require('express-validator');
-const {
-  getAllUsers,
-  addUser,
-  deleteUser,
-} = require('../controllers/userController');
-const { protect, authorize } = require('../middleware/auth');
 
-// Protect all routes
-router.use(protect);
-router.use(authorize('admin'));
+// Protect all routes and restrict to admin
+router.use(authMiddleware.protect, authMiddleware.restrictTo('admin'));
 
-// GET /api/users
-router.get('/', getAllUsers);
+router.get('/', userController.getAllUsers);
+router.post('/', userController.addUser);
+router.delete('/:id', userController.deleteUser);
 
-// POST /api/users
-router.post(
-  '/',
-  [
-    body('email').isEmail().withMessage('Please enter a valid email'),
-    body('password')
-      .isLength({ min: 6 })
-      .withMessage('Password must be at least 6 characters'),
-  ],
-  addUser
-);
-
-// DELETE /api/users/:id
-router.delete('/:id', deleteUser);
-
-module.exports = router;
+module.exports = router; 
