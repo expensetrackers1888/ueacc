@@ -1,8 +1,11 @@
 const express = require('express');
+const multer = require('multer');
 const expenseController = require('../controllers/expenseController');
 const authMiddleware = require('../middleware/authMiddleware');
 
 const router = express.Router();
+
+const upload = multer({ storage: multer.memoryStorage() }); // Memory storage for buffer
 
 router.use(authMiddleware.protect);
 
@@ -12,8 +15,8 @@ router.patch('/:id', authMiddleware.restrictTo('admin'), expenseController.updat
 router.get('/user/:userId', authMiddleware.restrictTo('admin'), expenseController.getUserExpensesAdmin);
 router.get('/user/:userId/pdf', authMiddleware.restrictTo('admin'), expenseController.generateUserExpensesPDF);
 
-router.post('/', expenseController.addExpense);
-router.put('/:id', expenseController.editExpense);
+router.post('/', upload.single('billFile'), expenseController.addExpense);
+router.put('/:id', upload.single('billFile'), expenseController.editExpense);
 router.get('/my-expenses', expenseController.getUserExpenses);
 router.delete('/:id', expenseController.deleteExpense);
 

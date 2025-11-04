@@ -13,14 +13,6 @@ const expenseSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
-  category: {
-    type: String,
-    required: true,
-  },
-  otherType: {
-    type: String,
-    default: '',
-  },
   currency: {
     type: String,
     default: 'INR',
@@ -35,6 +27,10 @@ const expenseSchema = new mongoose.Schema({
     default: 'Pending',
   },
   rejectReason: {
+    type: String,
+    default: '',
+  },
+  billUrl: {  // New field for bill file URL
     type: String,
     default: '',
   },
