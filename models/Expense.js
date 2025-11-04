@@ -30,10 +30,8 @@ const expenseSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
-  billUrl: {  // New field for bill file URL
-    type: String,
-    default: '',
-  },
+ newBillUrl: { type: String, default: '' }
+  ,
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
