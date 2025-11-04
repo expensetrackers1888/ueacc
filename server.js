@@ -19,6 +19,7 @@ app.use(cors());
 const allowedOrigins = [
   'http://localhost:3000',
   'https://ueacc.com',
+  'https://ueacc.onrender.com',
 ];
 
 const corsOptions = {
