@@ -13,6 +13,14 @@ const expenseSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
+  category: {
+    type: String,
+    required: true,
+  },
+  otherType: {
+    type: String,
+    default: '',
+  },
   currency: {
     type: String,
     default: 'INR',
@@ -30,8 +38,6 @@ const expenseSchema = new mongoose.Schema({
     type: String,
     default: '',
   },
- newBillUrl: { type: String, default: '' }
-  ,
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
