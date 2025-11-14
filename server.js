@@ -10,16 +10,34 @@ dotenv.config();
 
 const app = express();
 
-// ✅ Firebase Admin Initialization
-const serviceAccount = require('./firebase-service-account.json');
+// ✅ Firebase Admin Initialization using .env (NO JSON FILE)
+let serviceAccount;
+try {
+  const firebaseKeyString = process.env.FIREBASE_KEY;
+  if (!firebaseKeyString) {
+    throw new Error('FIREBASE_KEY is missing in .env file');
+  }
 
+  // Parse the JSON string from .env
+  serviceAccount = JSON.parse(firebaseKeyString);
+
+  // Optional: Validate required fields
+  if (!serviceAccount.project_id || !serviceAccount.private_key || !serviceAccount.client_email) {
+    throw new Error('Invalid FIREBASE_KEY: missing required fields');
+  }
+
+} catch (error) {
+  console.error('❌ Failed to parse FIREBASE_KEY from .env:', error.message);
+  process.exit(1); // Exit if Firebase can't be initialized
+}
+
+// Initialize Firebase Admin SDK
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  storageBucket: 'ueacc-d4d53.firebasestorage.app' // ⚠️ Replace with your actual Firebase bucket name
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'ueacc-d4d53.firebasestorage.app'
 });
 
 const bucket = admin.storage().bucket();
-
 
 const allowedOrigins = [
   'http://localhost:3000',
@@ -62,11 +80,10 @@ mongoose.connect(process.env.MONGO_URI, {
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch((err) => console.error('❌ MongoDB connection error:', err));
 
-
-// ⭐⭐⭐ ADD THIS — AUTO CREATE ADMIN USER (same process as your first server.js) ⭐⭐⭐
+// ⭐⭐⭐ AUTO CREATE ADMIN USER ⭐⭐⭐
 async function initializeAdminUser() {
-  const email = 'uelms2025@gmail.com';   // You can change email
-  const password = 'admin123';             // You can change password
+  const email = 'uelms2025@gmail.com';   // Change if needed
+  const password = 'admin123';           // Change if needed
 
   try {
     const existing = await admin.auth().getUserByEmail(email).catch(() => null);
@@ -90,7 +107,6 @@ async function initializeAdminUser() {
 
 initializeAdminUser();
 // ⭐⭐⭐ ADMIN AUTO CREATION ENDS HERE ⭐⭐⭐
-
 
 // ✅ Root Route
 app.get('/', (req, res) => {
