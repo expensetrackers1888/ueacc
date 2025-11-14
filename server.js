@@ -1,25 +1,30 @@
+// server.js
 const express = require('express');
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
 const cors = require('cors');
+const dotenv = require('dotenv');
 const admin = require('firebase-admin');
+const path = require('path');
 
-dotenv.config({ path: './.env' });
-
-// Initialize Firebase Admin SDK using environment variable
-const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+dotenv.config();
 
 const app = express();
-app.use(express.json());
-app.use(cors());
+
+// ✅ Firebase Admin Initialization
+const serviceAccount = require('./firebase-service-account.json');
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  storageBucket: 'ueacc-d4d53.firebasestorage.app' // ⚠️ Replace with your actual Firebase bucket name
+});
+
+const bucket = admin.storage().bucket();
+
 
 const allowedOrigins = [
   'http://localhost:3000',
   'https://ueacc.com',
-  'https://ueacc.onrender.com',
+  'https://ueacc.onrender.com',    
 ];
 
 const corsOptions = {
@@ -28,7 +33,7 @@ const corsOptions = {
       callback(null, true);
     } else {
       console.warn('❌ CORS blocked origin:', origin);
-      callback(null, false);
+      callback(null, false); // Don't throw!
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -36,56 +41,75 @@ const corsOptions = {
   credentials: true
 };
 
-// Routes
-const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/userRoutes');
-const expenseRoutes = require('./routes/expenseRoutes');
+// ✅ Middleware
+app.use(cors());
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/expenses', expenseRoutes);
+// ✅ Routes
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/expenses', require('./routes/expenseRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log(err));
+// ✅ Firebase Upload Middleware Helper
+app.locals.bucket = bucket;
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// ✅ MongoDB Connection
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ MongoDB connected successfully'))
+.catch((err) => console.error('❌ MongoDB connection error:', err));
 
-// Seed admin user in Firebase and MongoDB on first run
-const User = require('./models/User');
-(async () => {
-  const adminEmail = 'uelms2025@gmail.com';
-  const adminExists = await User.findOne({ email: adminEmail });
-  if (!adminExists) {
-    try {
-      let firebaseUser;
-      try {
-        firebaseUser = await admin.auth().getUserByEmail(adminEmail);
-        console.log('Admin user already exists in Firebase');
-      } catch (error) {
-        if (error.code === 'auth/user-not-found') {
-          firebaseUser = await admin.auth().createUser({
-            email: adminEmail,
-            password: 'admin123',
-          });
-          console.log('Default admin created in Firebase');
-        } else {
-          throw error;
-        }
-      }
 
-      await User.create({
-        firebaseUid: firebaseUser.uid,
-        email: adminEmail,
-        role: 'admin',
-      });
-      console.log('Default admin created in MongoDB');
-    } catch (err) {
-      console.error('Error creating admin:', err);
+// ⭐⭐⭐ ADD THIS — AUTO CREATE ADMIN USER (same process as your first server.js) ⭐⭐⭐
+async function initializeAdminUser() {
+  const email = 'uelms2025@gmail.com';   // You can change email
+  const password = 'admin123';             // You can change password
+
+  try {
+    const existing = await admin.auth().getUserByEmail(email).catch(() => null);
+
+    if (existing) {
+      console.log(`🔵 Admin user already exists: ${email}, UID: ${existing.uid}`);
+      return;
     }
-  } else {
-    console.log('Admin user already exists in MongoDB');
+
+    const userRecord = await admin.auth().createUser({
+      email,
+      password,
+    });
+
+    console.log('🟢 Admin user created with UID:', userRecord.uid);
+
+  } catch (error) {
+    console.error('🔴 Error creating admin user:', error.message);
   }
-})();
+}
+
+initializeAdminUser();
+// ⭐⭐⭐ ADMIN AUTO CREATION ENDS HERE ⭐⭐⭐
+
+
+// ✅ Root Route
+app.get('/', (req, res) => {
+  res.send('Expense Tracker Backend Running ✅');
+});
+
+// ✅ 404 Fallback
+app.use((req, res) => {
+  res.status(404).json({ status: 'fail', message: 'Route not found' });
+});
+
+// ✅ Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error('💥 Server Error:', err);
+  res.status(500).json({ status: 'error', message: 'Internal Server Error' });
+});
+
+// ✅ Start Server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
